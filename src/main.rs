@@ -1,8 +1,14 @@
-use std::{thread, time};
+use std::sync::mpsc::{channel, Sender};
+use std::thread;
+use std::time::Duration;
 use std::io::{stdout, Write, Stdout};
 use crossterm::{
     execute, queue,
-    style::{self, Stylize}, cursor, terminal, Result
+    style::{self, Stylize},
+    cursor,
+    terminal,
+    Result,
+    event:: {self, Event, poll, KeyEvent, KeyCode, KeyEventKind},
 };
 
 struct Board {
@@ -10,6 +16,21 @@ struct Board {
     height: u16,
     top: u16,
     left: u16,
+}
+
+#[derive(Debug)]
+enum Direction {
+    North,
+    South,
+    East,
+    West,
+}
+
+struct Point(u16, u16);
+
+struct Snake {
+    body: Vec<Point>,
+    direction: Direction,
 }
 
 impl Board {
@@ -41,24 +62,12 @@ impl Board {
     }
 }
 
-enum Direction {
-    North(u16),
-    South(u16),
-    East(u16),
-    West(u16),
-}
-
-struct Snake {
-    body: Vec<(u16, u16)>,
-    heading: Direction,
-}
-
 impl Snake {
     fn draw(&self, out: &mut Stdout) -> Result<()> {
-        for (x, y) in self.body.into_iter() {
+        for Point(x, y) in &self.body {
             queue!(
                 out,
-                cursor::MoveTo(x,y),
+                cursor::MoveTo(*x,*y),
                 style::PrintStyledContent("█".magenta())
                 )?;
         }
@@ -66,26 +75,78 @@ impl Snake {
         Ok(())
     }
 
-    fn advance() {
+    fn advance(&mut self) {
+        for mut p in &mut self.body {
+            match &self.direction {
+                Direction::North => p.1 = 1,
+                Direction::South => p.1 -= 1,
+                Direction::East => p.0 += 1,
+                Direction::West => p.0 -= 1,
+            }
+        }
+    }
+
+    fn turn(&mut self, dir: Direction) {
+        match (&self.direction, &dir) {
+            (Direction::North, Direction::South) => {},
+            (Direction::East, Direction::West) => {},
+            _ => self.direction = dir,
+        }
     }
 }
 
-fn game_loop(out: &mut Stdout, board: &Board) -> bool {
-    execute!(out, terminal::Clear(terminal::ClearType::All)).unwrap();
-    board.draw(out).unwrap();
-    out.flush().unwrap();
-    thread::sleep(time::Duration::from_millis(16));
-    true
+fn read_char(tx: &Sender<Result<char>>) {
+    loop {
+        if poll(Duration::from_millis(1000)).unwrap() {
+            if let Ok(Event::Key(KeyEvent {
+                code: KeyCode::Char(c),
+                kind: KeyEventKind::Press,
+                modifiers: _,
+                state: _,
+            })) = event::read()
+            {
+                tx.send(Ok(c));
+            }
+        }
+    }
 }
 
-fn main() -> Result<()> {
+fn game_loop() {
+    let mut stdout = stdout();
+    terminal::enable_raw_mode().unwrap();
     let board = Board {
         top: 0,
         left: 0,
         width: 40,
         height: 20,
     };
-    let mut stdout = stdout();
-    while game_loop(&mut stdout, &board) {};
+    let mut snake = Snake {
+        body: vec![Point(5, 5), Point(6, 5)],
+        direction: Direction::East,
+    };
+    let (tx, rx) = channel::<Result<char>>();
+
+    // waiting for keyboard events
+    thread::spawn(move || {
+        read_char(&tx);
+    });
+
+    loop {
+        // execute!(stdout, terminal::Clear(terminal::ClearType::All), cursor::Hide).unwrap();
+        let next = rx.try_recv();
+        if next.is_ok() {
+            println!("{:?}", next);
+        }
+
+        board.draw(&mut stdout).unwrap();
+        snake.draw(&mut stdout).unwrap();
+        stdout.flush().unwrap();
+        snake.advance();
+        thread::sleep(Duration::from_millis(300));
+    }
+}
+
+fn main() -> Result<()> {
+    game_loop();
     Ok(())
 }
