@@ -1,7 +1,8 @@
 [package]
-name = "rust"
+name = "rnake"
 version = "0.1.0"
 edition = "2021"
+description = "Snake in Rust"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
