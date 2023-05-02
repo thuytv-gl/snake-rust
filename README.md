@@ -8,8 +8,10 @@ objectives:
 ## TODO:
 - [x] draw a board with corssterm
 - [x] snake can move and turn accordingly
-- [ ] randomize the fruit and make it appear (not collide with the snake)
-- [ ] snake can eat fruit and growth
+- [x] snake can eat fruit and growth
+- [ ] randomize the fruit (not collide with the snake)
+- [ ] game end when: snake collide itself, bump to wall
+- [ ] show score on screen
 
 
 ## Dependencies
@@ -17,6 +19,12 @@ objectives:
 - [rand](https://docs.rs/rand/latest/rand): randomizer
 
 ## Dev log
+#### 03/05/2023
+- I refactor the code, it is easier to read now, and hope that performance be the same
+- Fixed weird terminal behavior after exit the game
+    - caused by [terminal::enable_raw_mode](//docs.rs/crossterm/latest/crossterm/terminal/fn.enable_raw_mode.html)
+- BUG: I noticed there is a bug when the game start, the snake shrink one bit 
+
 #### 02/05/2023
 - The snake can move forward and turn with [w, s, a, d] keys
 - Game can be exit with Ctrl+C now

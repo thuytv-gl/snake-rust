@@ -26,7 +26,7 @@ enum Direction {
     West,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct Point(u16, u16);
 
 struct Snake {
@@ -77,14 +77,17 @@ impl Snake {
         Ok(())
     }
 
-    fn advance(&mut self) {
-        self.body.pop();
+    fn advance(&mut self, fruit: &Point) {
         let mut new_head = self.body[0].clone();
         match &self.direction {
             Direction::North => new_head.1 -= 1,
             Direction::South => new_head.1 += 1,
             Direction::East => new_head.0 += 1,
             Direction::West => new_head.0 -= 1,
+        }
+
+        if new_head != *fruit {
+            self.body.pop();
         }
 
         self.body.insert(0, new_head);
@@ -115,6 +118,8 @@ fn listent_keyboard_event(tx: &Sender<Result<KeyEvent>>) {
 struct Game {
     board: Board,
     snake: Snake,
+    fruit: Point,
+    stdout: Stdout,
 }
 
 impl Game {
@@ -124,51 +129,60 @@ impl Game {
                 top: 0,
                 left: 0,
                 width: 40,
-                height: 20,
+                height: 40,
             },
             snake: Snake {
                 body: vec![Point(5, 5), Point(6, 5), Point(7, 5), Point(8, 5)],
                 direction: Direction::East,
             },
+            fruit: Point(7, 7),
+            stdout: stdout(),
         }
     }
 
-    fn assert_keyin(&mut self, key: Result<KeyEvent>) {
-        if let Ok(evt) = key {
-            match evt {
-                KeyEvent {
-                    modifiers: KeyModifiers::CONTROL,
-                    code: KeyCode::Char('c'),
-                    ..
-                } => self.quit(),
-                KeyEvent {
-                    code: KeyCode::Char('w'),
-                    ..
-                } => self.snake.turn(Direction::North),
-                KeyEvent {
-                    code: KeyCode::Char('s'),
-                    ..
-                } => self.snake.turn(Direction::South),
-                KeyEvent {
-                    code: KeyCode::Char('a'),
-                    ..
-                } => self.snake.turn(Direction::West),
-                KeyEvent {
-                    code: KeyCode::Char('d'),
-                    ..
-                } => self.snake.turn(Direction::East),
-                _ => {},
-            };
+    fn spawn_fruit(&mut self) {
+        queue!(
+            self.stdout,
+            cursor::MoveTo(7, 7),
+            style::PrintStyledContent("█".magenta())
+        ).unwrap();
+    }
+
+    fn handle_modin(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Char('c')
+                |KeyCode::Char('q') => self.quit(),
+            _ => {},
         }
     }
 
-    fn quit(&self) {
+    fn handle_keyin(&mut self, key: KeyCode) {
+        match key {
+            KeyCode::Char('w') => self.snake.turn(Direction::North),
+            KeyCode::Char('s') => self.snake.turn(Direction::South),
+            KeyCode::Char('a') => self.snake.turn(Direction::West),
+            KeyCode::Char('d') => self.snake.turn(Direction::East),
+            _ => {},
+        }
+    }
+
+    fn setup(&self) {
+        terminal::enable_raw_mode().unwrap();
+    }
+
+    fn cleanup(&mut self) {
+        execute!(self.stdout, terminal::Clear(terminal::ClearType::All), cursor::Show).unwrap();
+        terminal::disable_raw_mode().unwrap();
+    }
+
+    fn quit(&mut self) {
+        self.cleanup();
         std::process::exit(0);
     }
 
     fn play(&mut self) {
-        terminal::enable_raw_mode().unwrap();
-        let mut stdout = stdout();
+        self.setup();
+        self.spawn_fruit();
         let (tx, rx) = channel::<Result<KeyEvent>>();
 
         // waiting for keyboard events
@@ -177,15 +191,31 @@ impl Game {
         });
 
         loop {
-            execute!(stdout, terminal::Clear(terminal::ClearType::All), cursor::Hide).unwrap();
-            if let Ok(key) = rx.try_recv() {
-                self.assert_keyin(key);
+            execute!(self.stdout, terminal::Clear(terminal::ClearType::All), cursor::Hide).unwrap();
+            if let Ok(Ok(evt)) = rx.try_recv() {
+                match evt {
+                    KeyEvent {
+                        modifiers: KeyModifiers::CONTROL,
+                        code: c,
+                        ..
+                    } => self.handle_modin(c),
+                    KeyEvent {
+                        code: c,
+                        ..
+                    } => self.handle_keyin(c),
+                };
             }
 
-            self.board.draw(&mut stdout).unwrap();
-            self.snake.draw(&mut stdout).unwrap();
-            stdout.flush().unwrap();
-            self.snake.advance();
+
+            queue!(
+                self.stdout,
+                cursor::MoveTo(self.fruit.0, self.fruit.1),
+                style::PrintStyledContent("█".magenta())
+            ).unwrap();
+            self.board.draw(&mut self.stdout).unwrap();
+            self.snake.draw(&mut self.stdout).unwrap();
+            self.stdout.flush().unwrap();
+            self.snake.advance(&self.fruit);
             thread::sleep(Duration::from_millis(150));
         }
     }
