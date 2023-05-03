@@ -1,3 +1,4 @@
+use rand::Rng;
 use std::sync::mpsc::{channel, Sender};
 use std::thread;
 use std::time::Duration;
@@ -10,6 +11,9 @@ use crossterm::{
     Result,
     event:: {self, Event, KeyEvent, KeyCode, KeyModifiers},
 };
+
+const BOARD_WIDTH: u16 = 40;
+const BOARD_HEIGHT: u16 = BOARD_WIDTH;
 
 struct Board {
     width: u16,
@@ -29,12 +33,15 @@ enum Direction {
 #[derive(Clone, PartialEq)]
 struct Point(u16, u16);
 
-struct Snake {
-    body: Vec<Point>,
-    direction: Direction,
-}
-
 impl Board {
+    fn new() -> Self {
+        Board {
+            top: 0,
+            left: 0,
+            width: BOARD_WIDTH,
+            height: BOARD_HEIGHT,
+        }
+    }
     fn right(&self) -> u16 {
         self.width - 1
     }
@@ -64,7 +71,19 @@ impl Board {
     }
 }
 
+struct Snake {
+    body: Vec<Point>,
+    direction: Direction,
+}
+
 impl Snake {
+    fn new() -> Self {
+        Snake {
+            body: vec![Point(5, 5), Point(6, 5)],
+            direction: Direction::East,
+        }
+    }
+
     fn draw(&self, out: &mut Stdout) -> Result<()> {
         for Point(x, y) in &self.body {
             queue!(
@@ -77,20 +96,20 @@ impl Snake {
         Ok(())
     }
 
-    fn advance(&mut self, fruit: &Point) {
-        let mut new_head = self.body[0].clone();
+    fn advance(&mut self, fruit: &Fruit) -> Result<bool> {
+        let Point(mut x, mut y) = self.body[0].clone();
         match &self.direction {
-            Direction::North => new_head.1 -= 1,
-            Direction::South => new_head.1 += 1,
-            Direction::East => new_head.0 += 1,
-            Direction::West => new_head.0 -= 1,
-        }
-
-        if new_head != *fruit {
+            Direction::North => y = y.wrapping_sub(1),
+            Direction::South => y = y.wrapping_add(1),
+            Direction::East => x = x.wrapping_add(1),
+            Direction::West => x = x.wrapping_sub(1),
+        };
+        self.body.insert(0, Point(x, y));
+        if Point(x, y) != fruit.coord {
             self.body.pop();
+            return Ok(false);
         }
-
-        self.body.insert(0, new_head);
+        Ok(true)
     }
 
     fn turn(&mut self, dir: Direction) {
@@ -115,27 +134,43 @@ fn listent_keyboard_event(tx: &Sender<Result<KeyEvent>>) {
     }
 }
 
+struct Fruit {
+    coord: Point,
+}
+
+impl Fruit {
+    fn new() -> Self {
+        let mut rng = rand::thread_rng();
+        let x: u16 =  rng.gen_range(1..BOARD_WIDTH);
+        let y: u16 =  rng.gen_range(1..BOARD_HEIGHT);
+        Fruit {
+            coord: Point(x, y)
+        }
+    }
+    
+    fn draw(&self, stdout: &mut Stdout) -> Result<()> {
+        queue!(
+            stdout,
+            cursor::MoveTo(self.coord.0, self.coord.1),
+            style::PrintStyledContent("█".magenta())
+        )?;
+        Ok(())
+    }
+}
+
 struct Game {
     board: Board,
     snake: Snake,
-    fruit: Point,
+    fruit: Fruit,
     stdout: Stdout,
 }
 
 impl Game {
     fn new() -> Self {
         Game {
-            board: Board {
-                top: 0,
-                left: 0,
-                width: 40,
-                height: 40,
-            },
-            snake: Snake {
-                body: vec![Point(5, 5), Point(6, 5), Point(7, 5), Point(8, 5)],
-                direction: Direction::East,
-            },
-            fruit: Point(7, 7),
+            board: Board::new(),
+            snake: Snake::new(),
+            fruit: Fruit::new(),
             stdout: stdout(),
         }
     }
@@ -171,7 +206,10 @@ impl Game {
     }
 
     fn cleanup(&mut self) {
-        execute!(self.stdout, terminal::Clear(terminal::ClearType::All), cursor::Show).unwrap();
+        execute!(
+            self.stdout,
+            terminal::Clear(terminal::ClearType::All),
+            cursor::Show).unwrap();
         terminal::disable_raw_mode().unwrap();
     }
 
@@ -180,7 +218,23 @@ impl Game {
         std::process::exit(0);
     }
 
-    fn play(&mut self) {
+    fn assert_keyin(&mut self, key: Result<KeyEvent>) {
+        if let Ok(evt) = key {
+            match evt {
+                KeyEvent {
+                    modifiers: KeyModifiers::CONTROL,
+                    code: c,
+                    ..
+                } => self.handle_modin(c),
+                KeyEvent {
+                    code: c,
+                    ..
+                } => self.handle_keyin(c),
+            };
+        }
+    }
+
+    fn play(&mut self) -> Result<()> {
         self.setup();
         self.spawn_fruit();
         let (tx, rx) = channel::<Result<KeyEvent>>();
@@ -191,39 +245,31 @@ impl Game {
         });
 
         loop {
-            execute!(self.stdout, terminal::Clear(terminal::ClearType::All), cursor::Hide).unwrap();
-            if let Ok(Ok(evt)) = rx.try_recv() {
-                match evt {
-                    KeyEvent {
-                        modifiers: KeyModifiers::CONTROL,
-                        code: c,
-                        ..
-                    } => self.handle_modin(c),
-                    KeyEvent {
-                        code: c,
-                        ..
-                    } => self.handle_keyin(c),
-                };
-            }
-
-
             queue!(
                 self.stdout,
-                cursor::MoveTo(self.fruit.0, self.fruit.1),
-                style::PrintStyledContent("█".magenta())
-            ).unwrap();
-            self.board.draw(&mut self.stdout).unwrap();
-            self.snake.draw(&mut self.stdout).unwrap();
-            self.stdout.flush().unwrap();
-            self.snake.advance(&self.fruit);
-            thread::sleep(Duration::from_millis(150));
+                terminal::Clear(terminal::ClearType::All),
+                cursor::Hide)?;
+
+            if let Ok(key) = rx.try_recv() {
+                self.assert_keyin(key);
+            }
+            self.board.draw(&mut self.stdout)?;
+            self.fruit.draw(&mut self.stdout)?;
+            self.snake.draw(&mut self.stdout)?;
+            self.stdout.flush()?;
+            thread::sleep(Duration::from_millis(100));
+            if self.snake.advance(&self.fruit).unwrap() {
+                self.fruit = Fruit::new();
+            }
         }
     }
 }
 
 fn main() -> Result<()> {
     let mut game = Game::new();
-    game.play();
+    if game.play().is_err() {
+        game.quit();
+    }
     Ok(())
 }
 

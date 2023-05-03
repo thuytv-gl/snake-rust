@@ -19,6 +19,11 @@ objectives:
 - [rand](https://docs.rs/rand/latest/rand): randomizer
 
 ## Dev log
+#### 04/05/2023
+- Fruit spawn randomly now
+- BUG:
+    - overflow when snake go to -x or -y coordinate
+    - fruit spawn random so sometime it hard to know when it in the wall
 #### 03/05/2023
 - I refactor the code, it is easier to read now, and hope that performance be the same
 - Fixed weird terminal behavior after exit the game
