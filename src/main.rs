@@ -246,8 +246,17 @@ impl Game {
         let score = format!("Score: {}", self.snake.body.len()).magenta();
         queue!(
             self.stdout,
-            cursor::MoveTo(BOARD_WIDTH + 2, 2),
+            cursor::MoveTo(self.board.right() + 4, 2),
             style::PrintStyledContent(score)
+        )?;
+        Ok(())
+    }
+
+    fn draw_help(&mut self) -> Result<()>{
+        queue!(
+            self.stdout,
+            cursor::MoveTo(self.board.right() + 4, 4),
+            style::PrintStyledContent("move: w,s,a,d".green())
         )?;
         Ok(())
     }
@@ -270,6 +279,7 @@ impl Game {
             if let Ok(key) = rx.try_recv() {
                 self.assert_keyin(key);
             }
+            self.draw_help()?;
             self.board.draw(&mut self.stdout)?;
             self.fruit.draw(&mut self.stdout)?;
             self.snake.draw(&mut self.stdout)?;
