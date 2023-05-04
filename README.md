@@ -9,9 +9,9 @@ objectives:
 - [x] draw a board with corssterm
 - [x] snake can move and turn accordingly
 - [x] snake can eat fruit and growth
-- [ ] randomize the fruit (not collide with the snake)
-- [ ] game end when: snake collide itself, bump to wall
-- [ ] show score on screen
+- [x] randomize the fruit (not collide with the snake)
+- [x] game end when: snake collide itself, bump to wall
+- [x] show score on screen
 
 
 ## Dependencies
@@ -19,6 +19,14 @@ objectives:
 - [rand](https://docs.rs/rand/latest/rand): randomizer
 
 ## Dev log
+#### 05/05/2023
+- Game on
+- Fixed all the bugs
+- Don't have to care about overflow bc game snake die when it touch the wall anyway
+- Score looks nice
+- Maybe draw a nice box around the score
+- BUG: game render a bit lagging on [Alacritty](https://github.com/alacritty/alacritty)
+
 #### 04/05/2023
 - Fruit spawn randomly now
 - BUG:

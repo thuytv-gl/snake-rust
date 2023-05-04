@@ -30,7 +30,7 @@ enum Direction {
     West,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 struct Point(u16, u16);
 
 impl Board {
@@ -48,7 +48,6 @@ impl Board {
     fn bottom(&self) -> u16 {
         self.height - 1
     }
-
 
     fn is_wall(&self, x: u16, y: u16) -> bool {
         (x == self.left || x == self.right())
@@ -104,12 +103,20 @@ impl Snake {
             Direction::East => x = x.wrapping_add(1),
             Direction::West => x = x.wrapping_sub(1),
         };
-        self.body.insert(0, Point(x, y));
+        self.plug_head(Point(x, y));
         if Point(x, y) != fruit.coord {
             self.body.pop();
             return Ok(false);
         }
         Ok(true)
+    }
+
+    fn chop_head(&mut self) -> Point {
+        self.body.remove(0)
+    }
+
+    fn plug_head(&mut self, new_head: Point) {
+        self.body.insert(0, new_head);
     }
 
     fn turn(&mut self, dir: Direction) {
@@ -139,10 +146,10 @@ struct Fruit {
 }
 
 impl Fruit {
-    fn new() -> Self {
+    fn new(board: &Board) -> Self {
         let mut rng = rand::thread_rng();
-        let x: u16 =  rng.gen_range(1..BOARD_WIDTH);
-        let y: u16 =  rng.gen_range(1..BOARD_HEIGHT);
+        let x: u16 =  rng.gen_range(1..board.right());
+        let y: u16 =  rng.gen_range(1..board.bottom());
         Fruit {
             coord: Point(x, y)
         }
@@ -152,7 +159,7 @@ impl Fruit {
         queue!(
             stdout,
             cursor::MoveTo(self.coord.0, self.coord.1),
-            style::PrintStyledContent("█".magenta())
+            style::PrintStyledContent("█".red())
         )?;
         Ok(())
     }
@@ -167,20 +174,13 @@ struct Game {
 
 impl Game {
     fn new() -> Self {
+        let board = Board::new();
         Game {
-            board: Board::new(),
+            fruit: Fruit::new(&board),
+            board,
             snake: Snake::new(),
-            fruit: Fruit::new(),
             stdout: stdout(),
         }
-    }
-
-    fn spawn_fruit(&mut self) {
-        queue!(
-            self.stdout,
-            cursor::MoveTo(7, 7),
-            style::PrintStyledContent("█".magenta())
-        ).unwrap();
     }
 
     fn handle_modin(&mut self, key: KeyCode) {
@@ -206,10 +206,7 @@ impl Game {
     }
 
     fn cleanup(&mut self) {
-        execute!(
-            self.stdout,
-            terminal::Clear(terminal::ClearType::All),
-            cursor::Show).unwrap();
+        execute!(self.stdout, cursor::Show).unwrap();
         terminal::disable_raw_mode().unwrap();
     }
 
@@ -234,9 +231,29 @@ impl Game {
         }
     }
 
+    fn update_score(&mut self) -> Result<()> {
+        let head = self.snake.chop_head();
+        match head {
+            _ if self.snake.body.iter().any(|p| *p == head) => self.quit(),
+            _ if head == self.fruit.coord => self.fruit = Fruit::new(&self.board),
+            Point(x, _) if x == 0 || x == self.board.right() => self.quit(),
+            Point(_, y) if y == 0 || y == self.board.bottom() => self.quit(),
+            _ => {},
+        };
+
+        self.snake.plug_head(head);
+
+        let score = format!("Score: {}", self.snake.body.len()).magenta();
+        queue!(
+            self.stdout,
+            cursor::MoveTo(BOARD_WIDTH + 2, 2),
+            style::PrintStyledContent(score)
+        )?;
+        Ok(())
+    }
+
     fn play(&mut self) -> Result<()> {
         self.setup();
-        self.spawn_fruit();
         let (tx, rx) = channel::<Result<KeyEvent>>();
 
         // waiting for keyboard events
@@ -256,11 +273,10 @@ impl Game {
             self.board.draw(&mut self.stdout)?;
             self.fruit.draw(&mut self.stdout)?;
             self.snake.draw(&mut self.stdout)?;
+            self.snake.advance(&self.fruit)?;
+            self.update_score()?;
             self.stdout.flush()?;
             thread::sleep(Duration::from_millis(100));
-            if self.snake.advance(&self.fruit).unwrap() {
-                self.fruit = Fruit::new();
-            }
         }
     }
 }
