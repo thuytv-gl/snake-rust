@@ -4,7 +4,6 @@ objectives:
 - vector, loop, thread, timer
 - function and constants
 
-
 ## TODO:
 - [x] draw a board with corssterm
 - [x] snake can move and turn accordingly
@@ -12,6 +11,9 @@ objectives:
 - [x] randomize the fruit (not collide with the snake)
 - [x] game end when: snake collide itself, bump to wall
 - [x] show score on screen
+
+## Demo
+[![rust-snake](https://asciinema.org/a/Jz1mHsvgeFpy7oepWNRMyu6Xi.png)](https://asciinema.org/a/Jz1mHsvgeFpy7oepWNRMyu6Xi)
 
 
 ## Dependencies
