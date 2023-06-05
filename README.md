@@ -1,5 +1,5 @@
 # Learn rust by cloning the snake game
-objectives:
+## Objectives:
 - understand borrow checker
 - vector, loop, thread, timer
 - function and constants
@@ -50,3 +50,4 @@ objectives:
 #### 27/04/2023
 - The game can listen to keyboard input event now
 - BUG: cannot exit game with Ctl+C, maybe because of the thread spawn
+
